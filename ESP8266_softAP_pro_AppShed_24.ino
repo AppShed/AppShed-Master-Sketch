@@ -32,7 +32,7 @@ PubSubClient client(espClient);
 aREST restPro = aREST(client);
 
 // aREST Pro key (that you can get at dashboard.arest.io)
-char * key = "bigg9ut9cgqsheug";
+char * key = "your_pro_key";
 
 
 // WiFi parameters
