@@ -18,7 +18,8 @@
   v 29 - Support for L9110S Motor Driver
   v 30 - Support for Motor Shield/Base Board. Motor Pins changed D1,2,3,4
   v 31 - aREST Pro support fixed
-  v 32 - Remote Connection fixed
+  v 32 - Remote Control fixed
+  v 33 - AP/Pro bridge D6-D7
   
   --------------------------------------------------------
   NOTES
@@ -40,7 +41,7 @@
 
 
 // Variables to be exposed to the API
-int build = 32;
+int build = 33;
 
 // aREST Pro key (that you can get at dashboard.arest.io)
 char * key = "your_pro_key";
@@ -110,7 +111,7 @@ int maxPWM = 1023;
 
 
 
-int bridgedAPin = 0;
+int bridgedAPin = 6;
 int bridgedBPin = 7; 
 int pinMLF = 1; // default pin for left motor Forward
 int pinMLB = 3; // left motor backwards
