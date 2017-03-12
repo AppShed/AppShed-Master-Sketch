@@ -20,6 +20,9 @@
   v 31 - aREST Pro support fixed
   v 32 - Remote Control fixed
   v 33 - AP/Pro bridge D6-D7
+  v 34 - AP and Pro mode simultaneously
+  v 35 - no bridging, always AP and Pro
+  v 36 - Support for 2 types of Motor Drivers (Motor Shield, L298N)... todo: L9110
   
   --------------------------------------------------------
   NOTES
@@ -40,8 +43,9 @@
 
 
 
+
 // Variables to be exposed to the API
-int build = 33;
+int build = 36;
 
 // aREST Pro key (that you can get at dashboard.arest.io)
 char * key = "your_pro_key";
@@ -90,6 +94,7 @@ int commands(String command);
 int logo(String command);
 int runCommands(String command);
 int attachServos(String command);
+int setMotorDriver(String command);
 
 
 // create servo object to control a servo 
@@ -108,15 +113,20 @@ int logoQueueIndex = 0;
 int maxLogoQueueIndex = 20;
 int motorPinsConfigured = 0;
 int maxPWM = 1023;
+int secondsForWiFiConnection = 9;
+int wifiConnected = 0;
+unsigned long previousMillisWiFi = 0; 
+const long intervalWiFi = 3000;  // check to see if WiFi connected ever x milliseconds while looping
+unsigned long previousMillisPro = 0; 
+const long intervalPro = 500;  // x milliseconds between Pro connections
 
 
 
-int bridgedAPin = 6;
-int bridgedBPin = 7; 
-int pinMLF = 1; // default pin for left motor Forward
-int pinMLB = 3; // left motor backwards
-int pinMRF = 2; // right motor Forward
-int pinMRB = 4; // right motor Backwards
+int motorDriver = 0; // default motor driver. 
+int pinA1A = 1; // default pin for left motor Forward
+int pinA1B = 2; // left motor backwards
+int pinB1A = 3; // right motor Forward
+int pinB1B = 4; // right motor Backwards
 //int pinLPWM = 4; // default pin for left motor PWM
 //int pinRPWM = 5; // default pin for right motor PWM
 int pinPen = 5; // default pin for Logo Pen
@@ -162,44 +172,30 @@ void setup(void)
   Serial.println("");
   Serial.println("----------------------------------");
 
+
+  // make sure PWM Range is set
+  analogWriteRange(maxPWM);
+
+
   // Pin 4 is the default LED OUTPUT
   pinMode(gpio[4], OUTPUT);
   digitalWrite(gpio[4],0); // 0 turns the blue LED on
 
 
   // Allocate motor pins as OUTPUT and turn off
-  pinMode(gpio[pinMLF], OUTPUT);
-  pinMode(gpio[pinMLB], OUTPUT);
-  pinMode(gpio[pinMRF], OUTPUT);
-  pinMode(gpio[pinMRB], OUTPUT);  
+  pinMode(gpio[pinA1A], OUTPUT);
+  pinMode(gpio[pinA1B], OUTPUT);
+  pinMode(gpio[pinB1A], OUTPUT);
+  pinMode(gpio[pinB1B], OUTPUT);  
 //  pinMode(gpio[pinLPWM], OUTPUT);
 //  pinMode(gpio[pinRPWM], OUTPUT);
 
-  digitalWrite(gpio[pinMLF],0);
-  digitalWrite(gpio[pinMLB],0);
-  digitalWrite(gpio[pinMRF],0);
-  digitalWrite(gpio[pinMRB],0);
-//  analogWrite(gpio[pinLPWM],0);
-//  analogWrite(gpio[pinRPWM],0);
-
-
-  // see if D0 and D1 are bridged
-  pinMode(gpio[bridgedAPin], OUTPUT);
-  pinMode(gpio[bridgedBPin], INPUT);
-  // first test, turn ON D0;
-  digitalWrite(gpio[bridgedAPin],1);
-  if(digitalRead(gpio[bridgedBPin]) == 1){
-    // second test, turn off D0
-    digitalWrite(gpio[bridgedAPin],0);
-    if(digitalRead(gpio[bridgedBPin]) == 0){
-      bridged = 1;
-    }
-  }
-
+  digitalWrite(gpio[pinA1A],0);
+  digitalWrite(gpio[pinA1B],0);
+  digitalWrite(gpio[pinB1A],0);
+  digitalWrite(gpio[pinB1B],0);
   
   
-  // BRIDGED: Use Pro Cloud Service
-  if(bridged){
 
     Serial.println("");
     Serial.println("-----------------------------");
@@ -225,79 +221,125 @@ void setup(void)
     rest.function("logo",logo);
     rest.function("runCommands",runCommands);
     rest.function("attachServos",attachServos);
+    rest.function("setMotorDriver",setMotorDriver);
   
     // Connect to WiFi
+    int delayMilli = 500;
+    int countMilli = 0;
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
+      delay(delayMilli);
       Serial.print(".");
+      countMilli += delayMilli;
+      if(countMilli/1000 > secondsForWiFiConnection){
+        break;
+      }
     }
-    Serial.println("");
-    Serial.println("WiFi connected");
-    Serial.print("IP ");
-    Serial.println(WiFi.localIP());
+
+    if(WiFi.status() == WL_CONNECTED){
+      wifiConnected = 1;
+      Serial.println("");
+      Serial.println("WiFi connected");
+      Serial.print("IP ");
+      Serial.println(WiFi.localIP());
+      delay(500);
+    } else {
+      // Make sure WiFi is disconnected
+      WiFi.disconnect();
+      delay(50);
+      wifiConnected = 0;
+
+      Serial.println("");
+      Serial.println("*** WiFi NOT connected ***");
+    }
 
     // Set output topic
     char* out_topic = rest.get_topic();
 
     
-  } else {
-  // NOT BRIDGED: Use Local AP
 
+    
+    Serial.println("");
+    Serial.println("-----------------------------");
+    Serial.println("Mode: Local AP");
+    Serial.println("-----------------------------");
 
-        
-        
       
-
-        
-        Serial.println("");
-        Serial.println("-----------------------------");
-        Serial.println("Mode: Local AP");
-        Serial.println("-----------------------------");
-
-        // Init variables and expose them to REST API
-        restAP.variable("build",&build);
-        
-      
-        // Function to be exposed
-        restAP.function("calibrate",calibrate);
-        restAP.function("commands",commands);
-        restAP.function("logo",logo);
-        restAP.function("runCommands",runCommands);
-        restAP.function("attachServos",attachServos);
-      
-        // Give name & ID to the device (ID should be 6 characters long)
-        restAP.set_id("local");
-        restAP.set_name(deviceName);
-      
-      
-        
-        // Setup WiFi network
-        WiFi.softAP(ssidAP, passwordAP);
-        Serial.println("");
-        Serial.println("WiFi created");
-        Serial.print("SSID: ");
-        Serial.println(ssidAP);
-        Serial.print("Password: ");
-        Serial.println(passwordAP);
-        Serial.println("");
-      
-
-
-        server.begin();
-        Serial.println("Server started");
-      
-        // Print the IP address
-        IPAddress myIP = WiFi.softAPIP();
-        Serial.print("AP IP address: ");
-        Serial.println(myIP);
-
-
-  }
+    // Init variables and expose them to REST API
+    restAP.variable("build",&build);
+    
   
+    // Function to be exposed
+    restAP.function("calibrate",calibrate);
+    restAP.function("commands",commands);
+    restAP.function("logo",logo);
+    restAP.function("runCommands",runCommands);
+    restAP.function("attachServos",attachServos);
+    restAP.function("setMotorDriver",setMotorDriver);
+  
+    // Give name & ID to the device (ID should be 6 characters long)
+    restAP.set_id("local");
+    restAP.set_name(deviceName);
+  
+  
+    
+    // Setup WiFi network
+    WiFi.softAP(ssidAP, passwordAP);
+    Serial.println("");
+    Serial.println("WiFi Access Point created");
+    Serial.print("SSID AP: ");
+    Serial.println(ssidAP);
+    Serial.print("Password: ");
+    Serial.println(passwordAP);
+    Serial.println("");
+  
+
+
+    server.begin();
+    Serial.println("Server started");
+  
+    // Print the IP address
+    IPAddress myIP = WiFi.softAPIP();
+    Serial.print("AP IP address: ");
+    Serial.println(myIP);
+
+    delay(500);
+
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 void loop() {
+
+  // check if WiFi connected every so often
+  unsigned long currentMillis = millis();
+
+  if (currentMillis - previousMillisWiFi >= intervalWiFi) {
+    // save the last time you checked
+    previousMillisWiFi = currentMillis;
+
+    if(wifiConnected == 1){
+      if(WiFi.status() != WL_CONNECTED){
+        Serial.println(WiFi.status());
+        WiFi.disconnect();
+        delay(50);
+        wifiConnected = 0;
+        Serial.println("");
+        Serial.println("*** WiFi Connection lost... NOT connected ***");      
+      }
+    }
+  }
 
 
   runLogo();
@@ -305,13 +347,16 @@ void loop() {
 
 
 
-  // BRIDGED: Use Pro Cloud Service
-  if(bridged){
+  if (wifiConnected && currentMillis - previousMillisPro >= intervalPro) {
+    // save the last time you checked
+    previousMillisPro = currentMillis;
+
     // Connect to the cloud
     rest.handle(client);
-    
-  }else {
-
+  }
+  
+  //else {
+  {
 
 
       // Handle REST calls
@@ -330,6 +375,9 @@ void loop() {
   }
 
 }
+
+
+
 
 
 
@@ -509,6 +557,7 @@ int executeLogo(int command){
   return executeLogo(command,0);
 }
 
+
 int executeLogo(int command, int value){
 
   // get the duration for this command
@@ -523,6 +572,7 @@ int executeLogo(int command, int value){
   if(value == 0)
     currentLogoCommandExpiry = 0;
 
+
   // Make sure Motor Pins have been configured
   if(motorPinsConfigured == 0){
     initialiseMotorPins();
@@ -532,78 +582,58 @@ int executeLogo(int command, int value){
   }
 
 
-  // Use pinMLF for setting direction: 1/0
-  // Use pinMLB for speed, analog
 
-
-
-  
   // set the required pins
-    // 0.   ST x (or STOP) - Stop moving for x milliseconds
+  // 0.   ST x (or STOP) - Stop moving for x milliseconds
   if(command == 0){
-    analogWrite(gpio[pinMLF],0);
-    digitalWrite(gpio[pinMLB],0);
-    analogWrite(gpio[pinMRF],0);
-    digitalWrite(gpio[pinMRB],0);
+    motorLeftST();
+    motorRightST();
   }
+
     // 1.   FD x (or FORWARD) - Move forward x millimeters, Example: FD 100
   if(command == 1){
-    analogWrite(gpio[pinMLF],leftPWMF);
-    digitalWrite(gpio[pinMLB],1);
-    analogWrite(gpio[pinMRF],rightPWMF);
-    digitalWrite(gpio[pinMRB],1);
+    motorLeftFD();
+    motorRightFD();
   }
     // 2.   BK x (or BACK) - Move Backward x millimeters, Example: BK 100
   if(command == 2){    
-    analogWrite(gpio[pinMLF],leftPWMB);
-    digitalWrite(gpio[pinMLB],0);
-    analogWrite(gpio[pinMRF],rightPWMB);
-    digitalWrite(gpio[pinMRB],0);
+    motorLeftBK();
+    motorRightBK();
   }
     // 3.   LT x (or LEFT) - Rotate the turtle x degrees left, Example: LT 45
   if(command == 3){
-    analogWrite(gpio[pinMLF],leftPWMB);
-    digitalWrite(gpio[pinMLB],0);
-    analogWrite(gpio[pinMRF],rightPWMF);
-    digitalWrite(gpio[pinMRB],1);
+    motorLeftBK();
+    motorRightFD();
   }
     // 4.   RT x (or RIGHT) - Rotate the turtle x degrees right, Example: RT 45
   if(command == 4){
-    analogWrite(gpio[pinMLF],leftPWMF);
-    digitalWrite(gpio[pinMLB], 1);
-    analogWrite(gpio[pinMRF],rightPWMB);
-    digitalWrite(gpio[pinMRB],0);
+    motorLeftFD();
+    motorRightBK();
   }
     // 5.   ARCFL x Move in an arc going forward and left for x degrees, Example: ARCFL 45
   if(command == 5){
-    analogWrite(gpio[pinMLF],0);
-    digitalWrite(gpio[pinMLB],0);
-    analogWrite(gpio[pinMRF],rightPWMF);
-    digitalWrite(gpio[pinMRB],1);
+    motorLeftST();
+    motorRightFD();
   }
     // 6.   ARCFR x Move in an arc going forward and right for x degrees, Example: ARCFR 45
   if(command == 6){
-    analogWrite(gpio[pinMLF],leftPWMF);
-    digitalWrite(gpio[pinMLB],1);
-    analogWrite(gpio[pinMRF],0);
-    digitalWrite(gpio[pinMRB],0);
+    motorRightST();
+    motorLeftFD();
   }
     // 7.   ARCBL x Move in an arc going backward and left for x degrees, Example: ARCBL 45
   if(command == 7){
-    analogWrite(gpio[pinMLF],0);
-    digitalWrite(gpio[pinMLB],0);
-    analogWrite(gpio[pinMRF],rightPWMB);
-    digitalWrite(gpio[pinMRB],0);
+    motorLeftST();
+    motorRightBK();
   }
     // 8.   ARCBR x Move in an arc going backward and right for x degrees, Example: ARCBR 45
   if(command == 8){
-    analogWrite(gpio[pinMLF],leftPWMB);
-    digitalWrite(gpio[pinMLB],0);
-    analogWrite(gpio[pinMRF],0);
-    digitalWrite(gpio[pinMRB],0);
+    motorRightST();
+    motorLeftBK();
   }
 
 
+  
+  
     // 9.   PU (or PENUP) - Lift the Pen
   if(command == 9){
     // Pen Up. Default behaviour turns the pinPen on and off
@@ -620,15 +650,92 @@ int executeLogo(int command, int value){
 }
 
 
+void motorLeftST(){
+  if(motorDriver == 1){
+    analogWrite(gpio[pinA1A],0);    
+    analogWrite(gpio[pinA1B],0);    
+    digitalWrite(gpio[pinA1A],0);    
+    digitalWrite(gpio[pinA1B],0);    
+
+  } else if(motorDriver == 2){
+    
+  } else {
+      analogWrite(gpio[pinA1A],0);
+      digitalWrite(gpio[pinB1A],0);
+  }
+}
+
+void motorRightST(){
+  if(motorDriver == 1){
+    analogWrite(gpio[pinB1A],0);    
+    analogWrite(gpio[pinB1B],0);    
+    digitalWrite(gpio[pinB1A],0);    
+    digitalWrite(gpio[pinB1B],0);        
+  } else if(motorDriver == 2){
+    
+  } else {
+      analogWrite(gpio[pinA1B],0);
+      digitalWrite(gpio[pinB1B],0);
+  }
+}
+
+void motorLeftFD(){
+  if(motorDriver == 1){
+    digitalWrite(gpio[pinA1A],1);
+    analogWrite(gpio[pinA1B],(maxPWM - leftPWMF));
+  } else if(motorDriver == 2){
+    
+  } else {
+    analogWrite(gpio[pinA1A],leftPWMF);
+    digitalWrite(gpio[pinB1A],1);
+  }
+}
+
+void motorRightFD(){
+  if(motorDriver == 1){
+    digitalWrite(gpio[pinB1A],1);
+    analogWrite(gpio[pinB1B],(maxPWM - rightPWMF));
+  } else if(motorDriver == 2){
+    
+  } else {
+    analogWrite(gpio[pinA1B],rightPWMF);
+    digitalWrite(gpio[pinB1B],1);    
+  }
+}
+
+
+void motorLeftBK(){
+  if(motorDriver == 1){
+    digitalWrite(gpio[pinA1A],0);    
+    analogWrite(gpio[pinA1B],leftPWMB);
+  } else if(motorDriver == 2){
+    
+  } else {
+    analogWrite(gpio[pinA1A],leftPWMF);
+    digitalWrite(gpio[pinB1A],0);
+  }
+}
+
+void motorRightBK(){
+  if(motorDriver == 1){
+    digitalWrite(gpio[pinB1A],0);    
+    analogWrite(gpio[pinB1B],rightPWMB);
+  } else if(motorDriver == 2){
+    
+  } else {
+    analogWrite(gpio[pinA1B],rightPWMF);
+    digitalWrite(gpio[pinB1B],0);    
+  }
+}
 
 void initialiseMotorPins(){
   // Configure the motor pins as outputs
   
   // turn pin 4 off
-  pinMode(gpio[pinMLF], OUTPUT);
-  pinMode(gpio[pinMLB], OUTPUT);
-  pinMode(gpio[pinMRF], OUTPUT);
-  pinMode(gpio[pinMRB], OUTPUT);
+  pinMode(gpio[pinA1A], OUTPUT);
+  pinMode(gpio[pinA1B], OUTPUT);
+  pinMode(gpio[pinB1A], OUTPUT);
+  pinMode(gpio[pinB1B], OUTPUT);
 //  pinMode(gpio[pinLPWM], OUTPUT);
 //  pinMode(gpio[pinRPWM], OUTPUT);
 
@@ -861,6 +968,26 @@ int attachServos(String command){
   return item_counter;
 }
 
+
+
+int setMotorDriver(String command){
+  // set the motorDriver variable to ensure the correct pin settings are made according to the driver specifications
+  // returns the value that motorDriver was set to
+  
+  // motorDriver 0 - NodeMCU Motor Shield - A1A PWM A1B Digital FD 80:1, BK 80:0
+  // motorDriver 1 - L298N - A1A PWM or digital, A1B PWM or Digital, FD 80:0, BK 0:80
+  // motorDriver 2 - L9110 - A1A PWM A1B Digital FD 20:1 (will go FD 80%) BK 80:0  
+
+
+  int type = command.toInt();
+  if(type >= 0 && type <= 2){
+    motorDriver = type;
+    
+    return motorDriver;
+  }
+
+  return -1;
+}
 
 
 // Custom function accessible by the API
