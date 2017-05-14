@@ -23,6 +23,7 @@
   v 34 - AP and Pro mode simultaneously
   v 35 - no bridging, always AP and Pro
   v 36 - Support for 2 types of Motor Drivers (Motor Shield, L298N)... todo: L9110
+  v 37 - NeoPixel support 
   
   --------------------------------------------------------
   NOTES
@@ -31,6 +32,10 @@
   from http://www.esp8266.com/viewtopic.php?f=40&t=6732
   Avoid using D3 with relays as it will latch on at boot and your wifi will not connect until you remove the GPIO connection from the relay.
   D8 Will also latch on and cause conflict do not use this. - See more at: http://www.esp8266.com/viewtopic.php?f=40&t=6732#sthash.IzOPRBbl.dpuf
+
+  HASHMAP
+  ref http://playground.arduino.cc/Code/HashMap
+
 
 */
 
@@ -43,9 +48,27 @@
 
 
 
+// GPIO mapping
+int gpio[] = {16,5,4,0,2,14,12,13,15};
+
+
+
+
+// NeoPixel
+#include <Adafruit_NeoPixel.h>
+#ifdef __AVR__
+  #include <avr/power.h>
+#endif
+Adafruit_NeoPixel strip1 = Adafruit_NeoPixel(24, gpio[5], NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip2 = Adafruit_NeoPixel(24, gpio[6], NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip3 = Adafruit_NeoPixel(24, gpio[7], NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip4 = Adafruit_NeoPixel(24, gpio[8], NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip = strip1;
+
+
 
 // Variables to be exposed to the API
-int build = 36;
+int build = 37;
 
 // aREST Pro key (that you can get at dashboard.arest.io)
 char * key = "your_pro_key";
@@ -149,10 +172,13 @@ unsigned long currentLogoCommandExpiry;
 int commandQueue[9][19][3]; // [pin 0-19][command# 0-max][0:format 1:value 2:duration]
 int commandQueueIndex[] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // the current index for each pin in commandQueue
 unsigned long commandTimeout[] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // the time at which the command for a pin times out
-int gpio[] = {16,5,4,0,2,14,12,13,15};
 int logoQueue[20][2]; // [command#] [command,value]
 int servoArray[4]; // the pin numbers for the servos
-
+unsigned long lastRandom = 0;
+int hashMapLength = 50; // size of our hashMap
+int hashMapIndex = 0; // next index to use 
+String hashMapKeys[50]; 
+String hashMapValues[50]; 
 
 
 
@@ -222,6 +248,7 @@ void setup(void)
     rest.function("runCommands",runCommands);
     rest.function("attachServos",attachServos);
     rest.function("setMotorDriver",setMotorDriver);
+
   
     // Connect to WiFi
     int delayMilli = 500;
@@ -276,6 +303,8 @@ void setup(void)
     restAP.function("runCommands",runCommands);
     restAP.function("attachServos",attachServos);
     restAP.function("setMotorDriver",setMotorDriver);
+
+
   
     // Give name & ID to the device (ID should be 6 characters long)
     restAP.set_id("local");
@@ -305,6 +334,10 @@ void setup(void)
 
     delay(500);
 
+
+    //NeoPixel
+    strip1.begin();
+    strip1.show(); // Initialize all pixels to 'off'
 }
 
 
@@ -321,6 +354,16 @@ void setup(void)
 
 
 void loop() {
+
+/*
+ * NeoPixel Demo
+  np_colorWipe(1,strip1.Color(255, 0, 0), 20); // Red
+  np_colorWipe(1,strip1.Color(0, 255, 0), 20); // Green
+  np_colorWipe(1,strip1.Color(0, 0, 255), 20); // Blue
+
+  np_flash(1,strip1.Color(255, 255, 255),strip1.Color(0,0,0),20,10); 
+*/
+
 
   // check if WiFi connected every so often
   unsigned long currentMillis = millis();
@@ -346,6 +389,8 @@ void loop() {
   runCommands("");
 
 
+  
+  
 
   if (wifiConnected && currentMillis - previousMillisPro >= intervalPro) {
     // save the last time you checked
@@ -353,6 +398,7 @@ void loop() {
 
     // Connect to the cloud
     rest.handle(client);
+
   }
   
   //else {
@@ -373,6 +419,7 @@ void loop() {
 
   
   }
+
 
 }
 
@@ -419,12 +466,16 @@ String getValue(String data, char separator, int index)
 
 
 
+
 // Custom function accessible by the API
 int commands(String command) {
 
   // Commands will be sent in this format:
   // format,pin,value,duration:format,pin,value,duration:....
-  // format is 0-analog or 1-digital
+  // format is 
+  //  0-analog 
+  //  1-digital
+  //  101 - 199 -NeoPixel
 
 
   String str_Command;
@@ -445,6 +496,7 @@ int commands(String command) {
 
 
 
+
 void addCommandToQueue(String command){
 
   // expecting command format,pin,value,duration
@@ -453,6 +505,7 @@ void addCommandToQueue(String command){
   int formatInt;
   int pinInt;
   int valueInt;
+  String value = "";
   int durationInt;
   
   int item_counter = 0;
@@ -473,8 +526,18 @@ void addCommandToQueue(String command){
     data = getValue(command, ',', item_counter++);
     if(data == "")
       break;
-    valueInt = data.toInt();
-    
+
+    // If this format sends a string value, save it in the hashMap
+    if(hasStringValue(formatInt)){
+      value = data; // Also save the string value
+      valueInt = getRandom(1000,2000);
+      setHashValue(String(valueInt),value);
+
+
+    }else{
+      valueInt = data.toInt();
+    }
+        
     data = getValue(command, ',', item_counter++);
     // default duration is 0 (if ""), i.e. indefinite duration
     durationInt = data.toInt();
@@ -482,6 +545,7 @@ void addCommandToQueue(String command){
     int commandIndex = commandQueueIndex[pinInt];
 
 
+    // If the queue is full, this command is lost
     if(commandIndex > maxCommandQueueIndex)
       break;
       
@@ -814,7 +878,7 @@ int calibrate(String command){
 
 
 int updateConstant(String c, int value){
-  // Update the constant c setting it to value
+  // Update the 'constant' c setting it to value
 
   if(c == "leftPWMF")
     leftPWMF = value;
@@ -850,7 +914,10 @@ int updateConstant(String c, int value){
 
 int runCommands(String command){
 
-  // format: 0: analog (pwm), 1: digital
+  // format: 
+  //  0: analog (pwm)
+  //  1: digital
+  //  101-199: NeoPixel
 
   for(int pinInt=0;pinInt<maxPinsIndex;pinInt++){
     int nextCommandIndex = commandQueueIndex[pinInt];
@@ -884,8 +951,10 @@ int runCommands(String command){
         // decrement the commandQueueIndex - because we have removed one of the commands
         commandQueueIndex[pinInt]--;
           
-        pinMode(gpio[pinInt], OUTPUT);
         if(format == 0){
+          // Analog
+          
+          pinMode(gpio[pinInt], OUTPUT);
           // special case if the pin has a servo attached
           if(servoArray[0] == pinInt && servo1.attached())
             servo1.write(value);
@@ -897,8 +966,17 @@ int runCommands(String command){
             servo4.write(value);
           else  
             analogWrite(gpio[pinInt],value);
+        
         } else if(format == 1){
+          // Digital
+          
+          pinMode(gpio[pinInt], OUTPUT);
           digitalWrite(gpio[pinInt],value);
+        
+        } else if(format >= 101 && format <= 199){
+          // NeoPixel
+        
+          neoPixelRoutine(format,pinInt,value);
         }
       }
       
@@ -907,6 +985,9 @@ int runCommands(String command){
   }
   return 1;
 }
+
+
+
 
 
 int attachServos(String command){
@@ -966,6 +1047,20 @@ int attachServos(String command){
   }  
 
   return item_counter;
+}
+
+
+
+
+int attachNeoPixel(String command){
+
+  // attach a NeoPixel to a pin
+  // expecting command neoPixelNumber,pin:neoPixelNumber,pin...
+
+  // to be implemented... use same code as attacheServo
+  
+
+  return 1;
 }
 
 
@@ -1107,3 +1202,311 @@ int addLogoToQueue(String command, int value){
 }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+ * ==========================================================
+ * ================ = N E O   P I X E L  ====================
+ * ==========================================================
+ */
+
+
+void neoPixelRoutine(int routine, int s, int value){
+
+  
+  // run a NeoPixel routine on NeoPixel Strip `s` passing value
+  // routine can be:
+  //  101: clear - set all dots off
+  //  102: setColor - sets the color of the whole NeoPixel to value. 
+  //      Expects value to be an RGB Integer
+  //  105: 
+  // value is the key in the hashMap
+  
+
+  String params = String(value);
+  String strRoutine = params.substring(0,2);
+  String strWait = params.substring(2,4);
+  String strColor = params.substring(6,20); 
+
+
+
+  if(routine == 101)
+    np_clear(s);
+  
+  if(routine == 102)
+    np_setColor(s,getHashValue(value).toInt());
+
+//  if(routine == 105)
+//    np_colorWipe(pin,getHashValue(value).toInt());
+
+}
+
+
+
+
+
+
+// Routine 101 - clear
+// Set all dots to off
+int np_clear(int s) {
+  return np_setColor(s,0);
+}
+
+
+// Routine 102 - setColor 
+int np_setColor(int s, uint32_t c) {
+  // Set all dots to a color
+  // s - strip number
+  // c - color
+
+  if(s==1){strip = strip1;} else if(s==2){strip = strip2;} else if(s==3){strip = strip3;} else if(s==4){strip = strip4;} else return 0;
+
+  for(uint16_t i=0; i<strip.numPixels(); i++) {
+    strip.setPixelColor(i, c);
+  }
+  strip.show();
+  return 1;
+}
+
+
+
+// Routine 104 - flash 
+int np_flash(int s, uint32_t c1, uint32_t c2, uint8_t wait, int counter) {
+  // Flashes between two colors
+  // s - strip number, 1-4
+  // c1 - color 1
+  // c2 - color 2
+  // wait - time to wait between color changes
+  // counter - how many times to flash
+
+  if(s==1){strip = strip1;} else if(s==2){strip = strip2;} else if(s==3){strip = strip3;} else if(s==4){strip = strip4;} else return 0;
+
+  for(int a=0; a<counter; a++) {
+    for(uint16_t i=0; i<strip.numPixels(); i++) {
+      strip.setPixelColor(i, c1);
+    }
+    strip.show();
+    delay(wait);
+
+    for(uint16_t i=0; i<strip.numPixels(); i++) {
+      strip.setPixelColor(i, c2);
+    }
+    strip.show();
+    delay(wait);
+  }
+  return 1;
+}
+
+
+
+// Routine 105 - Color Wipe
+// Fill the dots one after the other with a color
+int np_colorWipe(int s, uint32_t c, uint8_t wait) {
+
+  if(s==1){strip = strip1;} else if(s==2){strip = strip2;} else if(s==3){strip = strip3;} else if(s==4){strip = strip4;} else return 0;
+    
+  for(uint16_t i=0; i<strip.numPixels(); i++) {
+    strip.setPixelColor(i, c);
+    strip.show();
+    delay(wait);
+  }
+
+  return 1;
+}
+
+void np_rainbow(Adafruit_NeoPixel st, uint8_t wait) {
+  uint16_t i, j;
+
+  for(j=0; j<256; j++) {
+    for(i=0; i<strip.numPixels(); i++) {
+      strip.setPixelColor(i, np_Wheel(st,(i+j) & 255));
+    }
+    strip.show();
+    delay(wait);
+  }
+}
+
+// Slightly different, this makes the rainbow equally distributed throughout
+void np_rainbowCycle(Adafruit_NeoPixel st, uint8_t wait) {
+  uint16_t i, j;
+
+  for(j=0; j<256*5; j++) { // 5 cycles of all colors on wheel
+    for(i=0; i< strip.numPixels(); i++) {
+      strip.setPixelColor(i, np_Wheel(st,((i * 256 / strip.numPixels()) + j) & 255));
+    }
+    strip.show();
+    delay(wait);
+  }
+}
+
+//Theatre-style crawling lights.
+void np_theaterChase(Adafruit_NeoPixel st, uint32_t c, uint8_t wait) {
+  for (int j=0; j<10; j++) {  //do 10 cycles of chasing
+    for (int q=0; q < 3; q++) {
+      for (uint16_t i=0; i < strip.numPixels(); i=i+3) {
+        strip.setPixelColor(i+q, c);    //turn every third pixel on
+      }
+      strip.show();
+
+      delay(wait);
+
+      for (uint16_t i=0; i < strip.numPixels(); i=i+3) {
+        strip.setPixelColor(i+q, 0);        //turn every third pixel off
+      }
+    }
+  }
+}
+
+//Theatre-style crawling lights with rainbow effect
+void np_theaterChaseRainbow(Adafruit_NeoPixel st, uint8_t wait) {
+  for (int j=0; j < 256; j++) {     // cycle all 256 colors in the wheel
+    for (int q=0; q < 3; q++) {
+      for (uint16_t i=0; i < strip.numPixels(); i=i+3) {
+        strip.setPixelColor(i+q, np_Wheel(st, (i+j) % 255));    //turn every third pixel on
+      }
+      strip.show();
+
+      delay(wait);
+
+      for (uint16_t i=0; i < strip.numPixels(); i=i+3) {
+        strip.setPixelColor(i+q, 0);        //turn every third pixel off
+      }
+    }
+  }
+}
+
+// Input a value 0 to 255 to get a color value.
+// The colours are a transition r - g - b - back to r.
+uint32_t np_Wheel(Adafruit_NeoPixel st, byte WheelPos) {
+  WheelPos = 255 - WheelPos;
+  if(WheelPos < 85) {
+    return st.Color(255 - WheelPos * 3, 0, WheelPos * 3);
+  }
+  if(WheelPos < 170) {
+    WheelPos -= 85;
+    return st.Color(0, WheelPos * 3, 255 - WheelPos * 3);
+  }
+  WheelPos -= 170;
+  return st.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+ * ==========================================================
+ * =========================== Hash Map  ====================
+ * ==========================================================
+ */
+
+
+
+String getHashValue(int key){
+  return getHashValue(String(key));
+}
+
+String getHashValue(String key){
+
+  for (int i=0; i < hashMapIndex; i++) {
+    if(hashMapKeys[i] == key){
+      return hashMapValues[i];
+    }
+  }
+  
+  return "";
+}
+
+
+void setHashValue(String key, String value){
+  int done = 0;
+  for (int i=0; i < hashMapIndex; i++) {
+    if(hashMapKeys[i] == key){
+      hashMapValues[i] = value;
+      done = 1;
+    }
+  }
+
+  if(done == 0){
+    hashMapKeys[hashMapIndex] = key;
+    hashMapValues[hashMapIndex] = value;
+    hashMapIndex ++;
+  }
+
+}
+
+int getRandom(int from,int to){
+  randomSeed(lastRandom);
+  lastRandom = (int) random(from,to);
+  return lastRandom;
+}
+
+int hasStringValue(int formatInt){
+  // if this command format uses a string value, return true. 
+  // this is the case where the format is neoPixel and other formats that pass a CSV as the value, not a number
+
+  if(formatInt > 100)
+    return 1;
+
+  return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Fill the dots one after the other with a color
+void colorWipe(uint32_t c, uint8_t wait) {
+  for(uint16_t i=0; i<strip.numPixels(); i++) {
+    strip.setPixelColor(i, c);
+    strip.show();
+    delay(wait);
+  }
+}
+
+
+// Input a value 0 to 255 to get a color value.
+// The colours are a transition r - g - b - back to r.
+uint32_t Wheel(byte WheelPos) {
+  WheelPos = 255 - WheelPos;
+  if(WheelPos < 85) {
+    return strip.Color(255 - WheelPos * 3, 0, WheelPos * 3);
+  }
+  if(WheelPos < 170) {
+    WheelPos -= 85;
+    return strip.Color(0, WheelPos * 3, 255 - WheelPos * 3);
+  }
+  WheelPos -= 170;
+  return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
+}
