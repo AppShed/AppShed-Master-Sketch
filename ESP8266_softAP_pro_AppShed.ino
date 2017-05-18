@@ -24,6 +24,7 @@
   v 35 - no bridging, always AP and Pro
   v 36 - Support for 2 types of Motor Drivers (Motor Shield, L298N)... todo: L9110
   v 37 - NeoPixel support 
+  v 38 - HashMap added
   
   --------------------------------------------------------
   NOTES
@@ -47,6 +48,13 @@
 #include <Servo.h> 
 
 
+// Variables to be exposed to the API
+int build = 38;
+
+
+
+
+
 
 // GPIO mapping
 int gpio[] = {16,5,4,0,2,14,12,13,15};
@@ -67,11 +75,9 @@ Adafruit_NeoPixel strip = strip1;
 
 
 
-// Variables to be exposed to the API
-int build = 37;
 
 // aREST Pro key (that you can get at dashboard.arest.io)
-char * key = "your_pro_key";
+char * key = "";
 char * deviceName = "AppCar";
 
 
