@@ -1,4 +1,4 @@
-/*
+z /*
   This a simple example of the aREST Library for the ESP8266 WiFi chip.
   See the README file for more details.
 
@@ -25,9 +25,6 @@
   v 36 - Support for 2 types of Motor Drivers (Motor Shield, L298N)... todo: L9110
   v 37 - NeoPixel support 
   v 38 - HashMap added
-  v 39 - info shows all pins
-  v 40 - don't start NeoPixel on setup
-  
   
   --------------------------------------------------------
   NOTES
@@ -52,7 +49,7 @@
 
 
 // Variables to be exposed to the API
-int build = 40;
+int build = 38;
 
 
 
@@ -81,21 +78,10 @@ Adafruit_NeoPixel strip = strip1;
 
 // aREST Pro key (that you can get at dashboard.arest.io)
 char * key = "your_pro_key";
-char * deviceName = "AppShed";
+char * deviceName = "AppCar";
 
 
 
-// Pin Values
-int PinA0;
-int PinD0;
-int PinD1;
-int PinD2;
-int PinD3;
-int PinD4;
-int PinD5;
-int PinD6;
-int PinD7;
-int PinD8;
 
 
 // Clients
@@ -131,11 +117,6 @@ const char* passwordAP = "appshedrocks";
 void callback(char* topic, byte* payload, unsigned int length);
 
 
-// Variables to be exposed to the API
-String analogValues = "";
-String digitalValues = "";
-
-
 // Declare functions to be exposed to the API
 int calibrate(String command);
 int commands(String command);
@@ -167,8 +148,6 @@ unsigned long previousMillisWiFi = 0;
 const long intervalWiFi = 3000;  // check to see if WiFi connected ever x milliseconds while looping
 unsigned long previousMillisPro = 0; 
 const long intervalPro = 500;  // x milliseconds between Pro connections
-unsigned long previousMillisPinRead = 0; 
-const long intervalPinRead = 500;  // x milliseconds between updating pin state
 
 
 
@@ -264,11 +243,7 @@ void setup(void)
   
     // Init variables and expose them to REST API
     rest.variable("build",&build);
-    rest.variable("analogValues",&analogValues);
-    rest.variable("digitalValues",&digitalValues);
-
-
-    
+  
     // Give name to device
     rest.set_name(deviceName);
 
@@ -324,11 +299,7 @@ void setup(void)
 
       
     // Init variables and expose them to REST API
-    restAP.variable("build",&build); 
-    restAP.variable("analogValues",&analogValues);
-    restAP.variable("digitalValues",&digitalValues);
-
-
+    restAP.variable("build",&build);
     
   
     // Function to be exposed
@@ -371,8 +342,8 @@ void setup(void)
 
 
     //NeoPixel
-//    strip1.begin();
-//    strip1.show(); // Initialize all pixels to 'off'
+    //strip1.begin();
+    //strip1.show(); // Initialize all pixels to 'off'
 }
 
 
@@ -390,42 +361,6 @@ void setup(void)
 
 void loop() {
 
-  unsigned long currentMillis = millis();
-
-  /* Read all the pin values */
-  if (currentMillis - previousMillisPinRead >= intervalPinRead) {
-    // save the last time you checked
-    previousMillisPinRead = currentMillis;
-
-    int wait = 1;
-    
-    PinA0 = analogRead(A0);
-    delay(wait);
-    PinD0 = digitalRead(gpio[0]);
-    delay(wait);
-    PinD1 = digitalRead(gpio[1]);
-    delay(wait);
-    PinD2 = digitalRead(gpio[2]);
-    delay(wait);
-    PinD3 = digitalRead(gpio[3]);
-    delay(wait);
-    PinD4 = digitalRead(gpio[4]);
-    delay(wait);
-    PinD5 = digitalRead(gpio[5]);
-    delay(wait);
-    PinD6 = digitalRead(gpio[6]);
-    delay(wait);
-    PinD7 = digitalRead(gpio[7]);
-    delay(wait);
-    PinD8 = digitalRead(gpio[8]);
-    delay(wait);
-
-    analogValues = String(PinA0);
-    digitalValues = String(PinD0) + "," + String(PinD1) + "," + String(PinD2) + "," + String(PinD3) + "," + String(PinD4) + "," + String(PinD5) + "," + String(PinD6) + "," + String(PinD7) + "," + String(PinD8);
-
-  }
-
-
 /*
  * NeoPixel Demo
   np_colorWipe(1,strip1.Color(255, 0, 0), 20); // Red
@@ -437,6 +372,7 @@ void loop() {
 
 
   // check if WiFi connected every so often
+  unsigned long currentMillis = millis();
 
   if (currentMillis - previousMillisWiFi >= intervalWiFi) {
     // save the last time you checked
@@ -491,8 +427,6 @@ void loop() {
   }
 
 
-    logo("FD,200;RT,90;FD,200;RT,90;FD,200;RT,90;FD,200;RT,90");
-    delay(10000);
 }
 
 
