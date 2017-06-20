@@ -1,4 +1,4 @@
-z /*
+/*
   This a simple example of the aREST Library for the ESP8266 WiFi chip.
   See the README file for more details.
 
@@ -25,6 +25,10 @@ z /*
   v 36 - Support for 2 types of Motor Drivers (Motor Shield, L298N)... todo: L9110
   v 37 - NeoPixel support 
   v 38 - HashMap added
+  v 39 - /info shows all pins
+  v 40 - don't start NeoPixel on setup
+  v 41 - Removed pin update from loop, neet to call /pins to update pins, and /info to read values
+  v 42 - Removed bug in loop
   
   --------------------------------------------------------
   NOTES
@@ -49,7 +53,7 @@ z /*
 
 
 // Variables to be exposed to the API
-int build = 38;
+int build = 42;
 
 
 
@@ -78,10 +82,21 @@ Adafruit_NeoPixel strip = strip1;
 
 // aREST Pro key (that you can get at dashboard.arest.io)
 char * key = "your_pro_key";
-char * deviceName = "AppCar";
+char * deviceName = "AppShed";
 
 
 
+// Pin Values
+int PinA0;
+int PinD0;
+int PinD1;
+int PinD2;
+int PinD3;
+int PinD4;
+int PinD5;
+int PinD6;
+int PinD7;
+int PinD8;
 
 
 // Clients
@@ -117,6 +132,11 @@ const char* passwordAP = "appshedrocks";
 void callback(char* topic, byte* payload, unsigned int length);
 
 
+// Variables to be exposed to the API
+String analogValues = "";
+String digitalValues = "";
+
+
 // Declare functions to be exposed to the API
 int calibrate(String command);
 int commands(String command);
@@ -124,7 +144,7 @@ int logo(String command);
 int runCommands(String command);
 int attachServos(String command);
 int setMotorDriver(String command);
-
+int readPins(String command);
 
 // create servo object to control a servo 
 Servo servo1;
@@ -148,6 +168,8 @@ unsigned long previousMillisWiFi = 0;
 const long intervalWiFi = 3000;  // check to see if WiFi connected ever x milliseconds while looping
 unsigned long previousMillisPro = 0; 
 const long intervalPro = 500;  // x milliseconds between Pro connections
+unsigned long previousMillisPinRead = 0; 
+const long intervalPinRead = 500;  // x milliseconds between updating pin state
 
 
 
@@ -243,7 +265,11 @@ void setup(void)
   
     // Init variables and expose them to REST API
     rest.variable("build",&build);
-  
+    rest.variable("analogValues",&analogValues);
+    rest.variable("digitalValues",&digitalValues);
+
+
+    
     // Give name to device
     rest.set_name(deviceName);
 
@@ -254,6 +280,7 @@ void setup(void)
     rest.function("runCommands",runCommands);
     rest.function("attachServos",attachServos);
     rest.function("setMotorDriver",setMotorDriver);
+    rest.function("readPins",readPins);
 
   
     // Connect to WiFi
@@ -299,7 +326,11 @@ void setup(void)
 
       
     // Init variables and expose them to REST API
-    restAP.variable("build",&build);
+    restAP.variable("build",&build); 
+    restAP.variable("analogValues",&analogValues);
+    restAP.variable("digitalValues",&digitalValues);
+
+
     
   
     // Function to be exposed
@@ -309,6 +340,7 @@ void setup(void)
     restAP.function("runCommands",runCommands);
     restAP.function("attachServos",attachServos);
     restAP.function("setMotorDriver",setMotorDriver);
+    restAP.function("readPins",readPins);
 
 
   
@@ -342,8 +374,8 @@ void setup(void)
 
 
     //NeoPixel
-    //strip1.begin();
-    //strip1.show(); // Initialize all pixels to 'off'
+//    strip1.begin();
+//    strip1.show(); // Initialize all pixels to 'off'
 }
 
 
@@ -353,13 +385,17 @@ void setup(void)
 
 
 
-
+  
 
 
 
 
 
 void loop() {
+
+  unsigned long currentMillis = millis();
+
+
 
 /*
  * NeoPixel Demo
@@ -372,7 +408,6 @@ void loop() {
 
 
   // check if WiFi connected every so often
-  unsigned long currentMillis = millis();
 
   if (currentMillis - previousMillisWiFi >= intervalWiFi) {
     // save the last time you checked
@@ -470,6 +505,83 @@ String getValue(String data, char separator, int index)
 
 
 
+// Custom function accessible by the API
+int readPins(String command) {
+  // update the saved pin values for specified pins
+  // command containts a comma separated list of the pins to read
+  // e.g. commands = "A0,D3,D5"
+
+  bool readAll = false;
+  
+  if(command == "")
+    readAll = true;
+
+  int wait = 1;
+
+  // add a leading and trailing comma to make inspection easier
+  command = ","+command+",";
+
+  String str_Command;
+  int item_counter = 0;
+
+
+  while(1){
+    str_Command = getValue(command, ',', item_counter++);
+
+  
+    if(!readAll && str_Command == "")
+      break;
+
+    if(readAll || str_Command == "A0"){
+      PinA0 = analogRead(A0);
+      delay(wait);
+    }
+    if(readAll || str_Command == "D0"){
+      PinD0 = digitalRead(gpio[0]);
+      delay(wait);
+    }
+    if(readAll || str_Command == "D1"){
+      PinD1 = digitalRead(gpio[1]);
+      delay(wait);
+    }
+    if(readAll || str_Command == "D2"){
+      PinD2 = digitalRead(gpio[2]);
+      delay(wait);
+    }
+    if(readAll || str_Command == "D3"){
+      PinD3 = digitalRead(gpio[3]);
+      delay(wait);
+    }
+    if(readAll || str_Command == "D4"){
+      PinD4 = digitalRead(gpio[4]);
+      delay(wait);
+    }
+    if(readAll || str_Command == "D5"){
+      PinD5 = digitalRead(gpio[5]);
+      delay(wait);
+    }
+    if(readAll || str_Command == "D6"){
+      PinD6 = digitalRead(gpio[6]);
+      delay(wait);
+    }
+    if(readAll || str_Command == "D7"){
+      PinD7 = digitalRead(gpio[7]);
+      delay(wait);
+    }
+    if(readAll || str_Command == "D8"){
+      PinD8 = digitalRead(gpio[8]);
+      delay(wait);
+    }
+
+    break;    
+
+  }
+  
+  analogValues = String(PinA0);
+  digitalValues = String(PinD0) + "," + String(PinD1) + "," + String(PinD2) + "," + String(PinD3) + "," + String(PinD4) + "," + String(PinD5) + "," + String(PinD6) + "," + String(PinD7) + "," + String(PinD8);
+
+  return 1;
+}
 
 
 
