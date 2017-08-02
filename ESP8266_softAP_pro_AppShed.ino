@@ -29,6 +29,8 @@
   v 40 - don't start NeoPixel on setup
   v 41 - Removed pin update from loop, neet to call /pins to update pins, and /info to read values
   v 42 - Removed bug in loop
+  v 43 - Show MotorDriver in debug
+  v 44 - Minor enhancements
   
   --------------------------------------------------------
   NOTES
@@ -53,7 +55,7 @@
 
 
 // Variables to be exposed to the API
-int build = 42;
+int build = 43;
 
 
 
@@ -82,7 +84,7 @@ Adafruit_NeoPixel strip = strip1;
 
 // aREST Pro key (that you can get at dashboard.arest.io)
 char * key = "your_pro_key";
-char * deviceName = "AppShed";
+char * deviceName = "AppCar"; // change the number for every robot
 
 
 
@@ -223,8 +225,11 @@ void setup(void)
   Serial.print(build);
   Serial.print("   Device: ");
   Serial.print(deviceName);
+  Serial.print("    Motor Driver: ");
+  Serial.print(motorDriver);
   Serial.println("");
   Serial.println("----------------------------------");
+
 
 
   // make sure PWM Range is set
