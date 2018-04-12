@@ -31,6 +31,9 @@
   v 42 - Removed bug in loop
   v 43 - Show MotorDriver in debug
   v 44 - Minor enhancements
+  v 45 - Use ssid AppShed10 (so doesn't go online)
+  v 46 - AP mode disabled, aREST cloud mode disabled - i.e. use local ip only
+
   
   --------------------------------------------------------
   NOTES
@@ -55,7 +58,7 @@
 
 
 // Variables to be exposed to the API
-int build = 44;
+int build = 46;
 
 
 
@@ -84,7 +87,7 @@ Adafruit_NeoPixel strip = strip1;
 
 // aREST Pro key (that you can get at dashboard.arest.io)
 char * key = "your_pro_key";
-char * deviceName = "AppCar"; // change the number for every robot
+char * deviceName = "device_name"; // change the number for every robot
 
 
 
@@ -124,7 +127,7 @@ WiFiServer server(LISTEN_PORT);
 
 
 // WiFi parameters
-const char* ssid = "AppShed";
+const char* ssid = "AppShed10";
 const char* password = "appshedrocks";
 const char* ssidAP = deviceName;
 const char* passwordAP = "appshedrocks";
@@ -157,6 +160,8 @@ Servo servo4;
 
 // Other variables
 int bridged = 0;
+int enableAP = 0;
+int enableCloud = 0;
 int maxPinsIndex = 8;
 int maxCommandQueueIndex = 19;
 int maxServosIndex = 3;
@@ -256,11 +261,6 @@ void setup(void)
   
   
 
-    Serial.println("");
-    Serial.println("-----------------------------");
-    Serial.println("Mode: Pro");
-    Serial.println("-----------------------------");
-
 
     // Set aREST key
     rest.setKey(key, client);
@@ -289,6 +289,13 @@ void setup(void)
 
   
     // Connect to WiFi
+
+
+    Serial.println("");
+    Serial.println("-----------------------------");
+    Serial.println("WiFi");
+    Serial.println("-----------------------------");
+    
     int delayMilli = 500;
     int countMilli = 0;
     WiFi.begin(ssid, password);
@@ -323,20 +330,41 @@ void setup(void)
 
     
 
+
+    Serial.println("");
+    Serial.println("-----------------------------");
+    Serial.println("Cloud Mode");
+    Serial.println("-----------------------------");
+    if(enableCloud == 1){
+      Serial.println("Enabled");
+    }else{
+      Serial.println("Disabled");
+    }
+
+
+
+
+
     
     Serial.println("");
     Serial.println("-----------------------------");
     Serial.println("Mode: Local AP");
     Serial.println("-----------------------------");
 
-      
-    // Init variables and expose them to REST API
+
+
+    // turn of AP mode first
+    WiFi.softAPdisconnect(true);
+    delay(50);
+
+    if(enableAP == 0){
+      Serial.println("AP Mode disabled");
+    }      
+  // Init variables and expose them to REST API
     restAP.variable("build",&build); 
     restAP.variable("analogValues",&analogValues);
     restAP.variable("digitalValues",&digitalValues);
-
-
-    
+   
   
     // Function to be exposed
     restAP.function("calibrate",calibrate);
@@ -347,33 +375,39 @@ void setup(void)
     restAP.function("setMotorDriver",setMotorDriver);
     restAP.function("readPins",readPins);
 
-
-  
     // Give name & ID to the device (ID should be 6 characters long)
     restAP.set_id("local");
     restAP.set_name(deviceName);
-  
-  
+
+
+    if(enableAP == 1){
     
-    // Setup WiFi network
-    WiFi.softAP(ssidAP, passwordAP);
-    Serial.println("");
-    Serial.println("WiFi Access Point created");
-    Serial.print("SSID AP: ");
-    Serial.println(ssidAP);
-    Serial.print("Password: ");
-    Serial.println(passwordAP);
-    Serial.println("");
-  
+      // Setup AP WiFi network
+      WiFi.softAP(ssidAP, passwordAP);
+      Serial.println("");
+      Serial.println("WiFi AP (Access Point created");
+      Serial.print("SSID AP: ");
+      Serial.println(ssidAP);
+      Serial.print("Password: ");
+      Serial.println(passwordAP);
+      Serial.println("");
 
+      // Print the IP address
+      IPAddress myIP = WiFi.softAPIP();
+      Serial.print("AP IP address: ");
+      Serial.println(myIP);
+    
+    }
 
+    // Start Web server
     server.begin();
-    Serial.println("Server started");
+    
+    Serial.println("");
+    Serial.println("-----------------------------");
+    Serial.println("Web Server");
+    Serial.println("-----------------------------");
+    Serial.println("Started");
   
-    // Print the IP address
-    IPAddress myIP = WiFi.softAPIP();
-    Serial.print("AP IP address: ");
-    Serial.println(myIP);
 
     delay(500);
 
@@ -437,34 +471,32 @@ void loop() {
 
   
   
-
-  if (wifiConnected && currentMillis - previousMillisPro >= intervalPro) {
-    // save the last time you checked
-    previousMillisPro = currentMillis;
-
-    // Connect to the cloud
-    rest.handle(client);
-
-  }
+  if(enableCloud == 1){
   
-  //else {
-  {
+    if (wifiConnected && currentMillis - previousMillisPro >= intervalPro) {
+      // save the last time you checked
+      previousMillisPro = currentMillis;
+  
+      // Connect to the cloud
+      rest.handle(client);
+    }  
+  }
 
-
-      // Handle REST calls
-      WiFiClient clientAP = server.available();
-      if (!clientAP) {
-        return;
-      }
-      while(!clientAP.available()){
-        runLogo();
-        runCommands("");
-        delay(1);
-      }
-      restAP.handle(clientAP);    
 
   
+
+  // Handle REST calls
+  WiFiClient clientAP = server.available();
+  if (!clientAP) {
+    return;
   }
+  while(!clientAP.available()){
+    runLogo();
+    runCommands("");
+    delay(1);
+  }
+  restAP.handle(clientAP);    
+    
 
 
 }
