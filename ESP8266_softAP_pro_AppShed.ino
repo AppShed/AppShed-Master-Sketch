@@ -86,8 +86,8 @@ Adafruit_NeoPixel strip = strip1;
 
 
 // aREST Pro key (that you can get at dashboard.arest.io)
-char * key = "your_pro_key";
-char * deviceName = "device_name"; // change the number for every robot
+char * key = "your_arest_key";
+char * deviceName = "AppShed"; // change the number for every robot
 
 
 
@@ -127,10 +127,10 @@ WiFiServer server(LISTEN_PORT);
 
 
 // WiFi parameters
-const char* ssid = "AppShed10";
-const char* password = "appshedrocks";
+const char* ssid = "your_wifi_ssid";
+const char* password = "your_wifi_password";
 const char* ssidAP = deviceName;
-const char* passwordAP = "appshedrocks";
+const char* passwordAP = "your_AP_password";
 
 
 // Functions
@@ -160,7 +160,7 @@ Servo servo4;
 
 // Other variables
 int bridged = 0;
-int enableAP = 0;
+int enableAP = 1;
 int enableCloud = 0;
 int maxPinsIndex = 8;
 int maxCommandQueueIndex = 19;
@@ -180,7 +180,7 @@ const long intervalPinRead = 500;  // x milliseconds between updating pin state
 
 
 
-int motorDriver = 0; // default motor driver. 
+int motorDriver = 1; // default motor driver. 
 int pinA1A = 1; // default pin for left motor Forward
 int pinA1B = 2; // left motor backwards
 int pinB1A = 3; // right motor Forward
